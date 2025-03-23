@@ -1,7 +1,19 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+*.ipynb 
+*.sh 
+*.pt 
+*.pkl
 *.py[cod]
 *$py.class
+*checkpoints*
+*gen_data*
+*data*
+*logs*
+*results*
+*plots*
+*restored_data*
+
 
 # C extensions
 *.so
