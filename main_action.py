@@ -30,6 +30,7 @@ def main():
     args.add_argument("--seed", type=int, default=42)
     args.add_argument("--is_train", action="store_true")
     args.add_argument("--is_sample", action="store_true")
+    
     args.add_argument("--conditional_weight", type=float, default=0.5)
     args = args.parse_args()
     
@@ -41,7 +42,7 @@ def main():
         "noiseA": (NoiseADataset, CleanADataset, 2),
     }
     
-    source_dataset, target_dataset, class_index = dataset_dict[args.exp_name]
+    source_dataset, target_dataset, class_index = dataset_dict["noiseA"]
     
     mixed_data = torch.load("./data/pick_SA_gaussian_shift20_30.pt")
     mixed_data = preprocess_data(mixed_data)
@@ -69,12 +70,12 @@ def main():
     
     example_source, example_condition = random_combined_trainset[0]['x0'], random_combined_trainset[0]['z0']
     
-    trainloader = DataLoader(random_combined_trainset, batch_size=128, shuffle=True)
-    validloader = DataLoader(random_combined_validset, batch_size=128, shuffle=True)
-    guidence_weight = args.guidence_weight
+    trainloader = DataLoader(random_combined_trainset, batch_size=512, shuffle=True)
+    validloader = DataLoader(random_combined_validset, batch_size=512, shuffle=True)
+    guidence_weight = 0.0
     
-    model = MLPCModel(input_dim=example_source.shape[-1], output_dim=example_source.shape[-1])
-    # model = MLPNModel(input_dim=example_source.shape[-1], output_dim=example_source.shape[-1], condition_dim = example_condition.shape[-1])
+    # model = MLPCModel(input_dim=example_source.shape[-1], output_dim=example_source.shape[-1])
+    model = MLPNModel(input_dim=example_source.shape[-1], output_dim=example_source.shape[-1], condition_dim = example_condition.shape[-1])
     
     
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -125,22 +126,24 @@ def main():
         
     if args.is_sample:
         sample_dl = DataLoader(noise_dataset, batch_size=128, shuffle=False)
-        sample = sampler.sample_batch(sample_dl, num_samples=1, start_t=0.0, end_t=1.0, n_points=100).squeeze(-1).detach().cpu()
-        torch.save(sample, f"./gen_data/{gen_name}_w_{guidence_weight:.2f}.pt")
+        sample_action = sampler.sample_batch(sample_dl, num_samples=1, start_t=0.0, end_t=1.0, n_points=100).squeeze(-1).detach().cpu()
+        torch.save(sample_action, f"./gen_data/{gen_name}_w_{guidence_weight:.2f}.pt")
     else:
-        sample = torch.load(f"./gen_data/{gen_name}_w_{guidence_weight:.2f}.pt")
-    
+        sample_action = torch.load(f"./gen_data/{gen_name}_w_{guidence_weight:.2f}.pt")
+    sample_sa = torch.cat([noise_dataset.label, sample_action], dim=-1)
     gt_data = torch.load("./data/pick_10000_clip.pt")
     
     
-    w_a, w_s, w_sa, mixed_data = inference(sample, mixed_data, gt_data, clean_mean, clean_std, is_reconstruct=True, label=None)
+    w_a, w_s, w_sa, mixed_data = inference(sample_sa, mixed_data, gt_data, clean_mean, clean_std, is_reconstruct=True, label=class_index)
     
     print(f"w_a: {w_a:.4f}, w_s: {w_s:.4f}, w_sa: {w_sa:.4f}")
     with open(f"./results/{gen_name}w_{args.guidence_weight:.2f}.txt", "w+") as f:
         f.write(f"w_a: {w_a:.4f}, w_s: {w_s:.4f}, w_sa: {w_sa:.4f}")
+        
+    for key in mixed_data.keys():
+        mixed_data[key] = mixed_data[key][(mixed_data['multi_class'] == 0) | (mixed_data['multi_class'] == class_index)]
     
-    
-    torch.save(mixed_data, f"./restored_data/{gen_name}_w{args.guidence_weight:.2f}.pt")
+    torch.save(mixed_data, f"./restored_data/{gen_name}.pt")
     
     
     
